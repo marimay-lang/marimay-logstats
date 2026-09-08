@@ -1,0 +1,3 @@
+INFO	старт
+WARN	старт
+ERROR	🌿

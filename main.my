@@ -1,0 +1,138 @@
+import * as cli from "std/cli";
+import * as io from "std/io";
+import * as json from "std/json";
+import * as text from "std/text";
+
+type Event {
+  public level: string,
+  public event: string,
+}
+
+type Count {
+  public event: string,
+  public count: int,
+}
+
+type Levels {
+  public mutable debug: int,
+  public mutable info: int,
+  public mutable warn: int,
+  public mutable error: int,
+}
+
+type Report {
+  public lines: int,
+  public levels: Levels,
+  public events: []Count,
+}
+
+type State {
+  public mutable lines: int,
+  public levels: Levels,
+  public events: Map<string, int>,
+}
+
+fn parseLine(line: string): Result<Event, string> {
+  const fields = text.split(line, "\t", 3).mapError((error) => "Ожидается УРОВЕНЬ<TAB>СОБЫТИЕ")?;
+  if fields.length() != 2 || fields[1] == "" {
+    return Err("Ожидается УРОВЕНЬ<TAB>СОБЫТИЕ");
+  }
+  const level = fields[0];
+  if level != "DEBUG" && level != "INFO" && level != "WARN" && level != "ERROR" {
+    return Err("Неизвестный уровень");
+  }
+  return Ok(Event { level, event: fields[1] });
+}
+
+fn add(state: State, event: Event, limit: int): Result<void, string> {
+  const old = state.events.get(event.event);
+  if old == None && state.events.length() >= limit {
+    return Err($"Превышен лимит {limit} событий");
+  }
+  const _ = state.events.put(
+    event.event,
+    match old {
+      Some(value) => value + 1,
+      None => 1,
+    },
+  ).mapError((error) => "Лимит коллекции")?;
+  state.lines += 1;
+  if event.level == "DEBUG" {
+    state.levels.debug += 1;
+  }
+  if event.level == "INFO" {
+    state.levels.info += 1;
+  }
+  if event.level == "WARN" {
+    state.levels.warn += 1;
+  }
+  if event.level == "ERROR" {
+    state.levels.error += 1;
+  }
+  return Ok();
+}
+
+fn collect(state: State, name: string, parsed: Request): Result<void, string> {
+  const input = openInput(name)?;
+  defer closeInput(input);
+  let number = 0;
+  while const line = readInput(input, parsed.maxLine)? {
+    number += 1;
+    const event = parseLine(line).mapError((error) => $"строка {number}: {error}")?;
+    add(state, event, parsed.maxKeys)?;
+  }
+  return Ok();
+}
+
+fn run(parsed: Request, names: []string): Result<void, string> {
+  const state = State {
+    lines: 0,
+    levels: Levels { debug: 0, info: 0, warn: 0, error: 0 },
+    events: mapOf<string, int>(),
+  };
+  for name in names {
+    collect(state, name, parsed).mapError((error) => $"{name}: {error}")?;
+  }
+  const events: []Count = [];
+  for entry in state.events {
+    match entry {
+      (event, count) => {
+        events.push(Count { event, count }).mapError((error) => "Лимит массива")?;
+      },
+    };
+  }
+  const output = json.encode(Report { lines: state.lines, levels: state.levels, events }).mapError(
+    (error) => "Отчёт превышает лимит JSON",
+  )?;
+  io.writeBytes(output).mapError(io.message)?;
+  emit("")?;
+  return flush();
+}
+
+fn main(arguments: []string): int {
+  const parsed = match request(
+    arguments,
+    "marimay-logstats",
+    "Сводка логов УРОВЕНЬ<TAB>СОБЫТИЕ; DEBUG/INFO/WARN/ERROR.",
+    [cli.positional("input", false, true, "файлы либо - для stdin")],
+  ) {
+    Ok(value) => value,
+    Err(error) => {
+      return fail("marimay-logstats", error, 2);
+    },
+  };
+  if parsed.help {
+    return match flush() {
+      Ok(_) => 0,
+      Err(error) => fail("marimay-logstats", error, 1),
+    };
+  }
+  const names = cli.positionalValues(parsed.parsed, "input");
+  if names.length() == 0 {
+    return fail("marimay-logstats", "Нужен ФАЙЛ; см. --help", 2);
+  }
+  return match run(parsed, names) {
+    Ok(_) => 0,
+    Err(error) => fail("marimay-logstats", error, 1),
+  };
+}

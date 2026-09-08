@@ -1,0 +1,36 @@
+@test
+fn strictFormatAndUnicode(): void {
+  const event = match parseLine("INFO\tПривет 🌿") {
+    Ok(value) => value,
+    Err(_) => panic("parse"),
+  };
+  expect.equal(event.level, "INFO");
+  expect.equal(event.event, "Привет 🌿");
+  expect.err(parseLine(""));
+  expect.err(parseLine("INFO"));
+  expect.err(parseLine("INFO\t"));
+  expect.err(parseLine("info\tx"));
+  expect.err(parseLine("INFO\tx\textra"));
+  const nul = match parseLine("ERROR\ta\0b") {
+    Ok(value) => value,
+    Err(_) => panic("parse"),
+  };
+  expect.equal(nul.event, "a\0b");
+}
+
+@test
+fn countsAndFailureAtomicity(): void {
+  const state = State {
+    lines: 0,
+    levels: Levels { debug: 0, info: 0, warn: 0, error: 0 },
+    events: mapOf<string, int>(),
+  };
+  expect.ok(add(state, Event { level: "INFO", event: "x" }, 1));
+  expect.ok(add(state, Event { level: "ERROR", event: "x" }, 1));
+  expect.err(add(state, Event { level: "WARN", event: "y" }, 1));
+  expect.equal(state.lines, 2);
+  expect.equal(state.levels.info, 1);
+  expect.equal(state.levels.error, 1);
+  expect.equal(state.levels.warn, 0);
+  expect.equal(state.events.get("x"), Some(2));
+}
