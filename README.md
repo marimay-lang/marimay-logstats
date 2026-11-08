@@ -1,50 +1,48 @@
-# marimay-logstats — Сводка уровней и событий лога
+# marimay-logstats
 
-Самостоятельная CLI-утилита на Marimay. Нужен компилятор с D101
-(`std/fs.readLine`) и исправлением native-кэша записей из того же изменения.
-Это локальная реализация CP42; полная платформенная и производительная
-приёмка ещё не завершена. Бизнес-логика находится в `main.my`, ввод и CLI —
-в `input.my`; Python только запускает проверки и измерения.
+![A structured log summary — a Marimay learning project](.github/banner.svg)
+
+> **Personal learning project.** This open-source MIT project is part of
+> [Marimay](https://github.com/marimay-lang/marimay), my hobby programming-language project.
+> I maintain it in my spare time to learn by building. APIs and tooling may
+> change, and progress may be intermittent.
+
+Aggregates strict `LEVEL<TAB>EVENT` log records into one compact JSON report with line, level and event counts.
+
+**Status:** Experimental Marimay learning application. Process acceptance scripts exercise
+VM and native Debug/Release execution. Full platform and performance acceptance
+remain in progress; existing reports retain their recorded revisions and limits.
+
+## Run and verify
 
 ```sh
+mmay run . -- --help
+mmay run . --allow-read . -- fixtures/sample.txt
 mmay fmt . --check
 mmay check .
 mmay test . --engine both
-mmay run . --allow-read . -- fixtures/sample.txt
-mmay run . -- --help
+MMAY="$(command -v mmay)" python3 tools/acceptance.py
+mkdir -p build
 mmay build . --release --allow-read . --output build/marimay-logstats
-build/marimay-logstats fixtures/sample.txt
-python3 tools/acceptance.py
-python3 tools/measure.py
 ```
 
-Файл `-` означает stdin; несколько файлов читаются последовательно. Если `-`
-указан повторно, это тот же поток, уже потреблённый предыдущим чтением.
-Пути при native build разрешаются явным `--allow-read`; grants встроены в
-артефакт. Утилита ничего не записывает во входные файлы и не следует symlink.
-Опции приложения идут после `--` у `mmay run`. Шаблон или имя, начинающееся
-с `-`, можно передать после ещё одного `--` парсера приложения.
+Install a compatible `mmay` and use its matching standard library. Application
+arguments follow `--` in `mmay run`. Filesystem and environment access requires
+explicit grants; native grants are selected at build time.
 
-Формат каждой непустой записи строго `УРОВЕНЬ<TAB>СОБЫТИЕ`; ровно один TAB,
-непустое событие, уровень один из `DEBUG`, `INFO`, `WARN`, `ERROR`. Пустая строка
-или дополнительный TAB — ошибка. Пробелы события не обрезаются. События
-агрегируются независимо от уровня в порядке первого появления, уровни —
-в фиксированном порядке debug/info/warn/error. Вывод — один компактный JSON
-с полями `lines`, `levels`, `events`; после него LF. До полной проверки всех
-входов отчёт не публикуется. `--max-keys N`: 0..65536 уникальных событий,
-по умолчанию 65536. Ошибки формата содержат файл и номер строки.
-Коды: 0 — успех, 1 — данные/I/O/лимит, 2 — аргументы. Память зависит от
-уникальных событий и длины строки. Итоговый JSON ограничен 1 МиБ; слишком
-большой отчёт отклоняется до вывода.
+Levels are `DEBUG`, `INFO`, `WARN` and `ERROR`. Every record has exactly one tab
+and a non-empty event. Events retain first-seen order. Multiple files are read
+in order; `-` selects stdin. Line length and unique-event limits are explicit.
+The report is emitted after validation of all inputs and is limited to 1 MiB.
 
-Вход строго UTF-8. LF и CRLF удаляются, одиночный CR и NUL сохраняются,
-последняя строка без LF обрабатывается; пустой файл не содержит строк.
-`--max-line N` задаёт 0..1048576 байт одной строки после удаления CRLF,
-по умолчанию 65536. Суммарный размер файлов этим лимитом не ограничен.
-Ошибка не выдаёт часть невалидной строки. Вывод и диагностика идут в
-раздельные stdout/stderr; закрытая труба даёт ненулевой статус.
+Python generates synthetic inputs and drives independent process checks;
+application logic is written in Marimay. `MMAY=/absolute/path/to/mmay` selects
+the compiler for Python drivers. `python3 tools/measure.py` runs the existing
+measurement harness and writes local reports under `build/`.
 
-[Бюджеты](BUDGETS.md) установлены до замеров. [Находки](ERGONOMICS.md) отделяют
-дефекты языка от выбранного формата приложения. Свежая приёмка сохраняет
-`build/acceptance/report.json` с хешами compiler/artifacts и exact bytes;
-измерения — отдельный отчёт. Наборы данных синтетические. Remote не настроен.
+See [`BUDGETS.md`](BUDGETS.md), [`ERGONOMICS.md`](ERGONOMICS.md), [`VERIFICATION.md`](VERIFICATION.md) for project-specific budgets,
+findings and historical verification details.
+
+## License
+
+[MIT](LICENSE). Existing copyright attribution is retained.
